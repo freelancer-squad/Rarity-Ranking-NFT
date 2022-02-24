@@ -102,6 +102,8 @@ function HomePage() {
             onChange={(e) => collectionChanged(e)}
           >
             {/* Your Option Here ---MAKE SURE VALUE CORRESPONDS TO MORALIS DB CLASS NAME */}
+            <Option value="boredapeyachtclub">boredapeyachtclub</Option>
+            <Option value="coolcatsnft">coolcatsnft</Option>
           </Select>
           <Search
             style={{ width: "250px" }}

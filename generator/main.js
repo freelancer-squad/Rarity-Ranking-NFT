@@ -1,41 +1,67 @@
 const Moralis = require("moralis/node");
-const { timer } = require("rxjs");
+const get = require("lodash/get");
+const isEmpty = require("lodash/isEmpty");
+const fetch = require("node-fetch");
 
-const serverUrl = ""; //Moralis Server Url here
-const appId = ""; //Moralis Server App ID here
+const serverUrl = "https://iyarhobfuh9j.usemoralis.com:2053/server"; //Moralis Server Url here
+const appId = "rh6qrB4NGW7JMg0dZrKLpwIyGeVXY3vGPlm54ofV"; //Moralis Server App ID here
 Moralis.start({ serverUrl, appId });
+
+const openSeaApiUrl = "https://api.opensea.io/api/v1";
+const openSeaApiKey = "2f6f419a083c46de9d83ce3dbe7db601";
 
 const resolveLink = (url) => {
   if (!url || !url.includes("ipfs://")) return url;
   return url.replace("ipfs://", "https://gateway.ipfs.io/ipfs/");
 };
 
-const collectionAddress = ""; //Collection Address Here
-const collectionName = ""; //CollectioonName Here
+const collectionList = [
+  "boredapeyachtclub",
+  "cool-cats-nft",
+  "bored-ape-kennel-club",
+];
 
-async function generateRarity() {
-  const NFTs = await Moralis.Web3API.token.getAllTokenIds({
-    address: collectionAddress,
-  });
+async function openSeaApiRequest({
+  method = "GET",
+  url = "",
+  queryParams = {},
+} = {}) {
+  let requestUrl = `${openSeaApiUrl}/${url}`;
 
-  const totalNum = NFTs.total;
-  const pageSize = NFTs.page_size;
-  console.log(totalNum);
-  console.log(pageSize);
-  let allNFTs = NFTs.result;
-
-  const timer = (ms) => new Promise((res) => setTimeout(res, ms));
-
-  for (let i = pageSize; i < totalNum; i = i + pageSize) {
-    const NFTs = await Moralis.Web3API.token.getAllTokenIds({
-      address: collectionAddress,
-      offset: i,
-    });
-    allNFTs = allNFTs.concat(NFTs.result);
-    await timer(6000);
+  if (!isEmpty(queryParams)) {
+    requestUrl = `${requestUrl}?${new URLSearchParams(queryParams).toString()}`;
   }
 
-  let metadata = allNFTs.map((e) => JSON.parse(e.metadata).attributes);
+  return fetch(requestUrl, {
+    method,
+    headers: {
+      "x-api-key": openSeaApiKey,
+      "Content-Type": "application/json",
+    },
+  }).then((r) => r.json());
+}
+
+async function getCollectionDetail(collectionSlug) {
+  const data = await openSeaApiRequest({ url: `collection/${collectionSlug}` });
+
+  return {
+    collectionName: collectionSlug.split("-").join(""),
+    collectionAddress: get(data, [
+      "collection",
+      "primary_asset_contracts",
+      "0",
+      "address",
+    ]),
+    collectionSlug,
+  };
+}
+
+async function calculateRarity(allNFTs) {
+  let metadata = allNFTs.map(
+    (e) => get(JSON.parse(e.metadata), "attributes") || []
+  );
+
+  const totalNum = allNFTs.length;
 
   let tally = { TraitCount: {} };
 
@@ -131,7 +157,40 @@ async function generateRarity() {
   }
 
   nftArr.sort((a, b) => b.Rarity - a.Rarity);
+}
 
+async function generateRarity({
+  collectionName,
+  collectionAddress,
+  collectionSlug,
+}) {
+  const ns = `process-${collectionSlug}`;
+  const startTime = Date.now();
+  const NFTs = await Moralis.Web3API.token.getAllTokenIds({
+    address: collectionAddress,
+  });
+
+  const totalNum = NFTs.total;
+  const pageSize = NFTs.page_size;
+  let allNFTs = NFTs.result;
+
+  const timer = (ms) => new Promise((res) => setTimeout(res, ms));
+
+  for (let i = pageSize; i < totalNum; i = i + pageSize) {
+    console.log(ns, "Fetching assets from " + i);
+    const NFTs = await Moralis.Web3API.token.getAllTokenIds({
+      address: collectionAddress,
+      offset: i,
+    });
+    allNFTs = allNFTs.concat(NFTs.result);
+    await timer(3000);
+  }
+
+  // Need replace with rarity.py ---------------
+  const nftArr = await calculateRarity(allNFTs);
+  // -------------------------------------------
+
+  console.log(ns, "Saving result " + nftArr.length);
   for (let i = 0; i < nftArr.length; i++) {
     nftArr[i].Rank = i + 1;
     const newClass = Moralis.Object.extend(collectionName);
@@ -144,12 +203,42 @@ async function generateRarity() {
     newObject.set("image", nftArr[i].image);
 
     await newObject.save();
-    console.log(i);
+    console.log(ns, i);
   }
-  
-  return true
+  console.log(ns, "Saved result " + nftArr.length);
+  console.log(ns, "Time duration: " + (Date.now() - startTime));
+
+  return true;
 }
 
-generateRarity()
-.then( ( result ) => { console.log( result ) } )
-.catch( ( error ) => { console.log( error ) } )
+async function main() {
+  let collectionInfoList = [];
+
+  for (let index = 0; index < collectionList.length; index++) {
+    const collectionSlug = collectionList[index];
+
+    const collectionDetail = await getCollectionDetail(collectionSlug);
+    collectionInfoList.push(collectionDetail);
+  }
+
+  console.log("collectionInfoList", collectionInfoList);
+
+  for (let index = 0; index < collectionInfoList.length; index++) {
+    const collectionInfo = collectionInfoList[index];
+    try {
+      await generateRarity(collectionInfo);
+
+      const newClass = Moralis.Object.extend("RarityCalculatedCollections");
+      const newObject = new newClass();
+      newObject.set("collection", collectionInfo.collectionSlug);
+      await newObject.save();
+    } catch (error) {
+      console.log(
+        `Error while processing ${collectionInfo.collectionSlug}...`,
+        error
+      );
+    }
+  }
+}
+
+main();
