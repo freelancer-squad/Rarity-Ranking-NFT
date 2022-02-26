@@ -212,6 +212,7 @@ async function generateRarity({
 
 	console.log('Result', JSON.stringify(nftArr, null, 2))
   console.log(ns, "Saving result " + nftArr.length);
+  
   for (let i = 0; i < nftArr.length; i++) {
     nftArr[i].Rank = i + 1;
     const newClass = Moralis.Object.extend(collectionName);
@@ -220,7 +221,7 @@ async function generateRarity({
     newObject.set("attributes", nftArr[i].Attributes);
     newObject.set("rarity", nftArr[i].Rarity);
     newObject.set("tokenId", nftArr[i].token_id);
-    newObject.set("rank", nftArr[i].Rank);
+    newObject.set("rank", Number(nftArr[i].Rank));
     newObject.set("image", nftArr[i].image);
 
     await newObject.save();
@@ -360,7 +361,10 @@ async function writeToDb() {
 	const rootDir = `${__dirname}/rarity_data`
   const files = fs.readdirSync(rootDir)
 
-	await BPromise.each(files, async (file) => {
+	await BPromise.mapSeries(files, async (file) => {
+    if (!file.endsWith('csv')) {
+      return
+    }
 		const data = await new BPromise((resolve, reject) => {
 			const result = []	
 			fs.createReadStream(`${rootDir}/${file}`)
@@ -383,10 +387,10 @@ async function writeToDb() {
 		//console.log('Data:', JSON.stringify(data, null, 2))
 		
 		const dbData = await BPromise.mapSeries(data, async (nft) => {
-      console.log(`[${collectionName}] Processing ${nft['TOKEN_ID']}`)
+      // console.log(`[${collectionName}] Processing ${nft['TOKEN_ID']}`)
 			const result = {
-				"Rarity": nft['RARITY_SCORE'],
-				"Rank": nft['Rank'],
+				"Rarity": Number(nft['RARITY_SCORE']),
+				"Rank": Number(nft['Rank']),
 				"token_id": nft['TOKEN_ID'],
 				"image": nft['IMAGE'],
 				"Attributes": []
@@ -474,19 +478,19 @@ async function writeToDb() {
 		*/
 
     //console.log('dbData', JSON.stringify(dbData, null, 2))
-    for (let i = 0; i < dbData.length; i++) {
+    console.log('Saving db for ' + collectionName)
+    await BPromise.each(dbData, async (_data) => {
 			const newClass = Moralis.Object.extend(collectionName);
 			const newObject = new newClass();
 
-			newObject.set("attributes", dbData[i].Attributes);
-			newObject.set("rarity", dbData[i].Rarity);
-			newObject.set("tokenId", dbData[i].token_id);
-			newObject.set("rank", dbData[i].Rank);
-			newObject.set("image", dbData[i].image);
+			newObject.set("attributes", _data.Attributes);
+			newObject.set("rarity", _data.Rarity);
+			newObject.set("tokenId", _data.token_id);
+			newObject.set("rank", _data.Rank);
+			newObject.set("image", _data.image);
 
 			await newObject.save();
-			//console.log(ns, i);
-		}
+    })
     console.log('Done')
 	})
 }
