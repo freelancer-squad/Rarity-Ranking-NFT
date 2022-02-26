@@ -26,6 +26,7 @@ yarn.lock
 
 node_modules
 .env
+.swp
 coverage
 coverage.json
 typechain

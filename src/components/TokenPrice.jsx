@@ -22,9 +22,10 @@ function TokenPrice(props) {
 
   const noLogoToken = "https://etherscan.io/images/main/empty-token.png";
 
+  const propImage = props.image.includes("ipfs://") ? props.image.replace("ipfs://", "https://gateway.ipfs.io/ipfs/") : props.image
   return (
     <div style={styles.token}>
-      <img src={props.image || noLogoToken} alt="logo" style={{ height: props?.size || "35px" }} />
+      <img src={propImage || noLogoToken} alt="logo" style={{ height: props?.size || "35px" }} />
       <span style={{ cursor: "pointer" }} onClick={toggleDisplayStyle} title={`Show in ${isUSDMode ? "ETH" : "USD"}`}>
         {formattedData && (isUSDMode ? formattedData.formattedUsd : formattedData.formattedNative)}
       </span>
